@@ -1,0 +1,9 @@
+[package]
+name = "rustoy-linux"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+rustoy-fs = { path = "../../fs" }
+rustoy-iso = { path = "../../iso" }

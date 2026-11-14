@@ -1,14 +1,10 @@
-<h1 align="center">
-  <a href=https://www.ventoy.net/>Ventoy</a>
-</h1>
+# Rustoy
 
-<p align="center">
-  <img src="https://img.shields.io/github/release/ventoy/Ventoy.svg?style=for-the-badge">
-  <img src="https://img.shields.io/github/license/ventoy/Ventoy?style=for-the-badge">
-  <img src="https://img.shields.io/github/stars/ventoy/Ventoy?style=for-the-badge">
-  <img src="https://img.shields.io/github/downloads/ventoy/Ventoy/total.svg?style=for-the-badge">
-  <img src="https://img.shields.io/github/actions/workflow/status/ventoy/Ventoy/ci.yml?label=actions&logo=github&style=for-the-badge">
-</p>
+![Rustoy wordmark and multiboot drive emblem](rustoy/assets/rustoy-banner.png)
+
+See the [Rustoy build and installation guide](rustoy/README.md) for the Rust-managed hybrid UEFI workflow.
+
+## Upstream Ventoy reference
 
 <h4 align="left">
 Ventoy is an open source tool to create bootable USB drive for ISO/WIM/IMG/VHD(x)/EFI files. <br/>
@@ -139,11 +135,4 @@ You can transfer to my paypal account `admin@ventoy.net` or just click [https://
 
 **Bitcoin**  
 Bitcoin Address `19mZDWzZgzkHCi9YX9H3fYCUuCHq3W6wfT`
-
-
-
-
-
-
-
 

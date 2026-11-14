@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Rustoy
+Comment=Inspect multiboot disk images
+Exec=rustoy-desktop
+Icon=rustoy
+Terminal=false
+Categories=Utility;

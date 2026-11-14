@@ -1,0 +1,13 @@
+[package]
+name = "rustoy-uefi"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[target.'cfg(target_os = "uefi")'.dependencies]
+uefi = { version = "=0.36.1", features = ["alloc", "global_allocator", "panic_handler"] }
+rustoy-fs = { path = "../../fs" }
+rustoy-iso = { path = "../../iso" }
+rustoy-linux = { path = "../linux" }
+rustoy-windows = { path = "../windows" }
+uefi-raw = '=0.13.0'

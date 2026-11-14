@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["rustoy/fs", "rustoy/iso", "rustoy/host", "rustoy/experiments/uefi", "rustoy/experiments/security", "rustoy/experiments/linux", "rustoy/experiments/windows", "rustoy/integration"]
+default-members = ["rustoy/host", "rustoy/fs", "rustoy/iso", "rustoy/integration"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[profile.release]
+panic = "abort"
