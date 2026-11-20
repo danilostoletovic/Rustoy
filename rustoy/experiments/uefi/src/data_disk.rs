@@ -11,7 +11,9 @@ use uefi::proto::media::block::BlockIO;
 const TRANSFER: usize = 32 * 1024;
 const ALIGNMENT: usize = 4096;
 
-fn borrow_protocol<P: ProtocolPointer + ?Sized>(handle: Handle) -> uefi::Result<ScopedProtocol<P>> {
+pub(crate) fn borrow_protocol<P: ProtocolPointer + ?Sized>(
+    handle: Handle,
+) -> uefi::Result<ScopedProtocol<P>> {
     // SAFETY: The synchronous read path never connects or disconnects controllers,
     // invokes child images, or retains these interfaces across menu input.
     unsafe {

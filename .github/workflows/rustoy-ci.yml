@@ -22,7 +22,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libssl-dev libwayland-dev libxkbcommon-dev libx11-dev pkg-config
+          sudo apt-get install -y libgl1-mesa-dev libwayland-dev libxkbcommon-dev libx11-dev pkg-config
       - name: Install Rust and the x86-64 UEFI target
         run: rustup toolchain install stable --profile minimal --component rustfmt --target x86_64-unknown-uefi
       - name: Check formatting

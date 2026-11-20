@@ -14,6 +14,18 @@ pub fn assemble_native(output: &OsStr, loader: &OsStr, data: &OsStr, id: &OsStr)
     let id = parse_id(id)?;
     let mut data = super::open_image(data).map_err(io::Error::other)?;
     validate_data(&mut data)?;
+    let application = read_efi(loader)?;
+    let mut esp = vec![0; NATIVE_ESP_BYTES];
+    let mut disk = Cursor::new(esp.as_mut_slice());
+    format_esp(&mut disk)?;
+    disk.rewind()?;
+    let fs = fatfs::FileSystem::new(disk, fatfs::FsOptions::new())?;
+    write_loader(&fs.root_dir(), &application)?;
+    fs.unmount()?;
+    write_native(output, id, esp.len() as u64, &mut esp.as_slice(), &mut data)
+}
+
+pub(crate) fn read_efi(loader: &OsStr) -> io::Result<Vec<u8>> {
     let loader = super::open_image(loader).map_err(io::Error::other)?;
     if !(512..=16 * 1024 * 1024).contains(&loader.length) {
         return Err(io::Error::other("Unexpected EFI application size"));
@@ -29,26 +41,27 @@ pub fn assemble_native(output: &OsStr, loader: &OsStr, data: &OsStr, id: &OsStr)
         ));
     }
 
-    let mut esp = vec![0; NATIVE_ESP_BYTES];
-    let mut disk = Cursor::new(esp.as_mut_slice());
+    Ok(application)
+}
+
+pub(crate) fn format_esp(disk: impl Read + Write + Seek) -> io::Result<()> {
     fatfs::format_volume(
-        &mut disk,
+        disk,
         fatfs::FormatVolumeOptions::new()
             .fat_type(fatfs::FatType::Fat32)
             .bytes_per_sector(SECTOR as u16)
             .volume_label(*b"RUSTOYEFI  "),
-    )?;
-    disk.rewind()?;
-    let fs = fatfs::FileSystem::new(disk, fatfs::FsOptions::new())?;
-    {
-        let root = fs.root_dir();
-        let boot = root.create_dir("EFI")?.create_dir("BOOT")?;
-        let mut entry = boot.create_file("BOOTX64.EFI")?;
-        entry.write_all(&application)?;
-        entry.flush()?;
-    }
-    fs.unmount()?;
-    write_native(output, id, esp.len() as u64, &mut esp.as_slice(), &mut data)
+    )
+}
+
+pub(crate) fn write_loader<T: Read + Write + Seek>(
+    root: &fatfs::Dir<'_, T>,
+    application: &[u8],
+) -> io::Result<()> {
+    let boot = root.create_dir("EFI")?.create_dir("BOOT")?;
+    let mut entry = boot.create_file("BOOTX64.EFI")?;
+    entry.write_all(application)?;
+    entry.flush()
 }
 
 fn is_x64_efi(bytes: &[u8]) -> bool {

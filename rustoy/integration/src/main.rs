@@ -19,8 +19,11 @@ fn smoke(
     fs::create_dir(output)?;
     let output = output.canonicalize()?;
     let boot_debian = matches!(isos, [flag] if flag == Path::new("--boot-debian"));
+    let boot_staged = matches!(isos, [flag] if flag == Path::new("--boot-staged-fixture"));
     let expected = if boot_debian {
         Some(1)
+    } else if boot_staged {
+        Some(0)
     } else if let [flag, count] = isos
         && flag.as_os_str() == "--count"
     {
@@ -52,7 +55,7 @@ fn smoke(
     fs::copy(vars, &vars_copy)?;
     let serial = output.join("serial.log");
     let mut command = Command::new(qemu);
-    if boot_debian {
+    if boot_debian || boot_staged {
         command
             .args([
                 "-machine",
@@ -98,20 +101,28 @@ fn smoke(
             let discovered = log.contains("RUSTOY_EFI_STARTED")
                 && log.lines().any(|line| line.trim() == discovery_marker);
             if discovered {
-                if !boot_debian {
+                if !boot_debian && !boot_staged {
                     break Ok(());
                 }
                 if !sent {
                     let Some(stdin) = &mut monitor else {
                         break Err(io::Error::other("QEMU monitor input is unavailable"));
                     };
-                    if let Err(err) = stdin
-                        .write_all(b"sendkey ret\n")
-                        .and_then(|()| stdin.flush())
-                    {
+                    let key: &[u8] = if boot_staged {
+                        b"sendkey f8\n"
+                    } else {
+                        b"sendkey ret\n"
+                    };
+                    if let Err(err) = stdin.write_all(key).and_then(|()| stdin.flush()) {
                         break Err(err);
                     }
                     sent = true;
+                }
+                if boot_staged
+                    && log.contains("Starting staged Windows boot application.")
+                    && log.matches("RUSTOY_EFI_STARTED").count() == 2
+                {
+                    break Ok(());
                 }
                 if log.contains("Starting Debian Live EFI kernel.")
                     && log.contains("/run/live/rootfs/")
@@ -120,10 +131,10 @@ fn smoke(
                 {
                     break Ok(());
                 }
-                if let Some(failure) = log
-                    .lines()
-                    .find(|line| line.contains("Debian Live boot failed:"))
-                {
+                if let Some(failure) = log.lines().find(|line| {
+                    line.contains("Debian Live boot failed:")
+                        || line.contains("Windows Setup failed:")
+                }) {
                     break Err(io::Error::other(failure));
                 }
             }
@@ -136,6 +147,8 @@ fn smoke(
         if Instant::now() >= deadline {
             break Err(io::Error::other(if boot_debian {
                 "timed out waiting for Debian Live to reach userspace"
+            } else if boot_staged {
+                "timed out waiting for the staged EFI fixture to start"
             } else {
                 "timed out waiting for the Rustoy startup and discovery markers"
             }));
@@ -179,6 +192,9 @@ fn main() -> ExitCode {
         );
         eprintln!(
             "       rustoy-integration <qemu> <ovmf-secure-code> <ovmf-vars> <gpt.img> <new-output-dir> --boot-debian"
+        );
+        eprintln!(
+            "       rustoy-integration <qemu> <ovmf-secure-code> <ovmf-vars> <gpt.img> <new-output-dir> --boot-staged-fixture"
         );
         return ExitCode::from(2);
     };

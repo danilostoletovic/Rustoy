@@ -21,6 +21,8 @@ mod linux_boot;
 #[cfg(target_os = "uefi")]
 #[allow(unsafe_code)]
 mod optical;
+#[cfg(target_os = "uefi")]
+mod windows_boot;
 
 #[cfg(target_os = "uefi")]
 mod firmware {
@@ -254,6 +256,9 @@ mod firmware {
         uefi::println!("Rustoy");
         uefi::println!("Enter  Boot Debian Live   F7  Inspect   F5  Rescan   Esc  Exit");
         uefi::println!("F6  Optical boot (experimental)");
+        if crate::windows_boot::available() {
+            uefi::println!("F8  Windows Setup");
+        }
         if images.is_empty() {
             uefi::println!("No ISO files found in the boot volume root.");
         }
@@ -287,6 +292,11 @@ mod firmware {
                 input.read_key().map_err(|err| err.status())
             });
             match result {
+                Ok(Some(Key::Special(ScanCode::FUNCTION_8))) => {
+                    if let Err(status) = crate::windows_boot::start() {
+                        uefi::println!("Windows Setup failed: {:?}", status);
+                    }
+                }
                 Ok(Some(Key::Special(ScanCode::ESCAPE))) => {
                     uefi::println!("RUSTOY_EFI_EXIT");
                     return Status::SUCCESS;

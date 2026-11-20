@@ -17,9 +17,18 @@ cargo run --locked -p rustoy-integration -- <qemu> <ovmf-secure-code> <ovmf-vars
 
 Use an OVMF variable template with Secure Boot off for this unsigned loader. The smoke test presents the disk read-only and uses its own copy of the firmware variables. For the automated Debian boot test, place one ISO on the exFAT volume. See [status](experiments/STATUS.md) for Windows boot and firmware coverage.
 
-Run `cargo test --locked --workspace` to test the Rust workspace. The [hybrid Ventoy image workflow](docs/HYBRID.md) is available for compatibility. `rustoy-host import-ventoy` downloads and verifies the pinned upstream archive. The original upstream build is available as a manually dispatched GitHub Actions workflow.
+Run `cargo test --locked --workspace` to test the Rust workspace.
 
-On Linux, install the OpenSSL development package and `pkg-config` to build the host CLI with its HTTPS importer.
+## Try staged Windows Setup in a disposable image
+
+Use the root of a mounted x64 Windows installation ISO or a directory containing its extracted files. For an `install.wim` larger than FAT32 permits, use DISM on Windows to split it into `install.swm` and its companion files before staging. See the [Microsoft USB installation guide](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/install-windows-from-a-usb-flash-drive).
+
+```text
+cargo run --locked -p rustoy-host -- prepare-windows-esp staged-fat32.img target/x86_64-unknown-uefi/release/rustoy-uefi.efi <windows-media-dir>
+cargo run --locked -p rustoy-host -- assemble-image staged.img staged-fat32.img data.exfat.img 1234567890ab4cde8123456789abcdef
+```
+
+The experimental image stages the Windows files on Rustoy's FAT32 EFI System Partition and offers **F8 Windows Setup**. Linux ISO files stay on the exFAT partition. Completing a Windows installation from this layout is still unverified. The physical installer does not stage Windows media yet.
 
 ## Desktop releases
 

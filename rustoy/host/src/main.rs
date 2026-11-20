@@ -33,12 +33,6 @@ fn inspect_disk(path: &std::ffi::OsStr, block_size: usize) -> Result<(), String>
     Ok(())
 }
 
-fn import_ventoy(output: &Path, archive: Option<&Path>) -> Result<(), String> {
-    let runtime = rustoy_host::import_ventoy(output, archive).map_err(|err| err.to_string())?;
-    println!("{}", runtime.display());
-    Ok(())
-}
-
 fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let result = match args.as_slice() {
@@ -56,16 +50,9 @@ fn main() -> ExitCode {
         [command, output, efi, data, id] if command == "assemble-native-image" => {
             rustoy_host::assemble_native_image(output, efi, data, id).map_err(|err| err.to_string())
         }
-        [command, output, data, release, id] if command == "assemble-ventoy-image" => {
-            rustoy_host::assemble_ventoy_image(output, data, Path::new(release), id)
+        [command, output, efi, media] if command == "prepare-windows-esp" => {
+            rustoy_host::prepare_windows_esp(output, efi, Path::new(media))
                 .map_err(|err| err.to_string())
-        }
-        [command] if command == "import-ventoy" => {
-            import_ventoy(Path::new("target/ventoy-runtime"), None)
-        }
-        [command, output] if command == "import-ventoy" => import_ventoy(Path::new(output), None),
-        [command, output, archive] if command == "import-ventoy" => {
-            import_ventoy(Path::new(output), Some(Path::new(archive)))
         }
         #[cfg(windows)]
         [command] if command == "list-usb" => rustoy_host::usb::list().map(|drives| {
@@ -80,16 +67,13 @@ fn main() -> ExitCode {
             eprintln!("Usage: rustoy-host inspect-iso <file.iso> | inspect-disk <file.img> [4096]");
             eprintln!("       rustoy-host format-exfat <new-exfat.img> [file.iso ...]");
             eprintln!(
+                "       rustoy-host prepare-windows-esp <new-fat32.img> <rustoy-uefi.efi> <windows-media-dir>"
+            );
+            eprintln!(
                 "       rustoy-host assemble-image <new.img> <fat32.img> <exfat.img> <disk-id-hex>"
             );
             eprintln!(
                 "       rustoy-host assemble-native-image <new.img> <rustoy-uefi.efi> <exfat.img> <disk-id-hex>"
-            );
-            eprintln!(
-                "       rustoy-host assemble-ventoy-image <new.img> <exfat.img> <ventoy-1.1.18-dir> <disk-id-hex>"
-            );
-            eprintln!(
-                "       rustoy-host import-ventoy [new-output-dir [ventoy-1.1.18-windows.zip]]"
             );
             #[cfg(windows)]
             eprintln!("       rustoy-host list-usb");

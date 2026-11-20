@@ -20,7 +20,7 @@ jobs:
       - name: Install Linux desktop dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libssl-dev libwayland-dev libxkbcommon-dev libx11-dev pkg-config desktop-file-utils xvfb xauth libgl1-mesa-dri
+          sudo apt-get install -y libgl1-mesa-dev libwayland-dev libxkbcommon-dev libx11-dev pkg-config desktop-file-utils xvfb xauth libgl1-mesa-dri
       - name: Build and test
         run: |
           rustup update stable --profile minimal

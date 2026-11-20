@@ -10,6 +10,8 @@ mod install;
 pub use install::{assemble as assemble_image, assemble_native as assemble_native_image};
 mod format_exfat;
 pub use format_exfat::format_exfat;
+mod windows_media;
+pub use windows_media::prepare_windows_esp;
 
 pub struct Image {
     file: File,
@@ -107,6 +109,3 @@ pub fn inspect_disk(path: &OsStr, block_size: usize) -> Result<String, String> {
 
 #[cfg(windows)]
 pub mod usb;
-
-mod ventoy;
-pub use ventoy::{assemble_ventoy_image, import_ventoy};
