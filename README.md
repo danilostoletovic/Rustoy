@@ -2,7 +2,7 @@
 
 ![Rustoy wordmark and multiboot drive emblem](rustoy/assets/rustoy-banner.png)
 
-See the [Rustoy build and installation guide](rustoy/README.md) for the Rust-managed hybrid UEFI workflow.
+See the [Rustoy build and installation guide](rustoy/README.md) for the native x86-64 UEFI workflow and the Ventoy compatibility path.
 
 ## Upstream Ventoy reference
 

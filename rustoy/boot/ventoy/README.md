@@ -2,6 +2,8 @@
 
 Rustoy consumes the official Ventoy 1.1.18 Windows release from upstream revision `6116894`. Its SHA-256 is `082c478e8c432e1ac653899fcf50e3a4077a2851bc6112b5ddd30545962164a9`. See the [release and matching source](https://github.com/ventoy/Ventoy/releases/tag/v1.1.18). The local reference checkout is `74cff34240dca6991b79c6656770670da7b0c39e`; rebuilds of the packaged artifacts should use the release revision.
 
+From the repository root, run `cargo run --locked -p rustoy-host -- import-ventoy` to import the archive under `target/ventoy-runtime`. To use an existing archive, pass a new destination followed by the local ZIP path. The importer verifies the same pinned checksum for both sources.
+
 | Release path | SHA-256 |
 | --- | --- |
 | `boot/boot.img` | `85b4b080765738ca96620c32d8182edddbaf6a36149162946d12aa1f9802bc44` |

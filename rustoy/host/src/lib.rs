@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 use rustoy_fs::{Error, ReadAt, exfat, gpt};
 use std::{
     ffi::OsStr,
@@ -7,7 +7,9 @@ use std::{
     io::{Read, Seek, SeekFrom},
 };
 mod install;
-pub use install::assemble as assemble_image;
+pub use install::{assemble as assemble_image, assemble_native as assemble_native_image};
+mod format_exfat;
+pub use format_exfat::format_exfat;
 
 pub struct Image {
     file: File,
@@ -107,4 +109,4 @@ pub fn inspect_disk(path: &OsStr, block_size: usize) -> Result<String, String> {
 pub mod usb;
 
 mod ventoy;
-pub use ventoy::assemble_ventoy_image;
+pub use ventoy::{assemble_ventoy_image, import_ventoy};

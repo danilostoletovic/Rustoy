@@ -1,12 +1,25 @@
 # Rustoy
 
-Rustoy builds and inspects GPT multiboot images with a Rust host CLI and the pinned Ventoy 1.1.18 UEFI boot stack. The hybrid layout uses an exFAT ISO volume followed by the Ventoy EFI partition.
+Rustoy builds and inspects GPT multiboot images with a Rust host CLI. The native x86-64 UEFI loader boots Debian Live from a FAT32 EFI System Partition and a separate exFAT volume containing the ISO files. The Windows desktop app uses Windows Storage APIs directly from Rust to install the native loader to USB.
 
-1. Import the [pinned Ventoy runtime](boot/ventoy/README.md) with `pwsh -File rustoy/scripts/import-ventoy.ps1`, or extract the verified upstream archive on Linux.
-2. Follow the [hybrid build and verification instructions](docs/HYBRID.md) to assemble a new disk image and inspect it before testing in QEMU.
-3. Run `cargo check --locked`, `cargo test --locked` and `cargo clippy --locked --all-targets` from the repository root.
+## Build a native disk image
 
-The hybrid workflow builds regular disk image files. Physical hybrid installation and OS compatibility verification remain in progress. The Windows desktop installer creates native Rustoy media. Native boot experiments are preserved in [experiments](experiments), with separate Cargo targets outside the default build. The root upstream README and licenses remain available.
+From the repository root, use an x86-64 Debian Live Standard ISO. ISO basenames may contain ASCII letters, digits, dots, underscores and hyphens. Supply a different nonzero 32-digit hexadecimal disk ID for each independent disk image.
+
+```text
+rustup target add x86_64-unknown-uefi
+cargo build --locked --release -p rustoy-uefi --target x86_64-unknown-uefi
+cargo run --locked -p rustoy-host -- format-exfat data.exfat.img debian-live-13.7.0-amd64-standard.iso
+cargo run --locked -p rustoy-host -- assemble-native-image native.img target/x86_64-unknown-uefi/release/rustoy-uefi.efi data.exfat.img 1234567890ab4cde8123456789abcdef
+cargo run --locked -p rustoy-host -- inspect-disk native.img
+cargo run --locked -p rustoy-integration -- <qemu> <ovmf-secure-code> <ovmf-vars> native.img <new-log-directory> --boot-debian
+```
+
+Use an OVMF variable template with Secure Boot off for this unsigned loader. The smoke test presents the disk read-only and uses its own copy of the firmware variables. For the automated Debian boot test, place one ISO on the exFAT volume. See [status](experiments/STATUS.md) for Windows boot and firmware coverage.
+
+Run `cargo test --locked --workspace` to test the Rust workspace. The [hybrid Ventoy image workflow](docs/HYBRID.md) is available for compatibility. `rustoy-host import-ventoy` downloads and verifies the pinned upstream archive. The original upstream build is available as a manually dispatched GitHub Actions workflow.
+
+On Linux, install the OpenSSL development package and `pkg-config` to build the host CLI with its HTTPS importer.
 
 ## Desktop releases
 

@@ -17,9 +17,9 @@ impl DebianLiveAssets {
     pub fn locate<R: ReadAt>(iso: &mut Iso<R>) -> Result<Self, Error> {
         let kernel = iso.file("/live/vmlinuz")?;
         let initrd = iso.file("/live/initrd.img")?;
-        let mut signatures = [0; 6];
+        let mut signatures = [0; 8];
         iso.read(kernel, 0x1fe, &mut signatures)?;
-        if signatures != [0x55, 0xaa, b'H', b'd', b'r', b'S'] || initrd.length == 0 {
+        if signatures[..2] != [0x55, 0xaa] || signatures[4..] != *b"HdrS" || initrd.length == 0 {
             return Err(Error::Invalid);
         }
         Ok(Self { kernel, initrd })

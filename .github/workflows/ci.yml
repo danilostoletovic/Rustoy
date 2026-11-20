@@ -1,18 +1,13 @@
-name: Ventoy CI
+name: Ventoy upstream build
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-  
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Run docker compose up
       run: docker compose up
     - uses: actions/upload-artifact@v4

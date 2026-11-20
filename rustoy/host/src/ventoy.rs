@@ -6,12 +6,65 @@ use rustoy_fs::{exfat, gpt};
 use sha2::{Digest, Sha256};
 use std::{
     ffi::OsStr,
-    fs::File,
+    fs::{self, File},
     io::{self, Cursor, Read, Seek, Write},
-    path::Path,
+    path::{Path, PathBuf},
+    time::Duration,
 };
+use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 
 const ESP_BYTES: usize = 32 * 1024 * 1024;
+const RELEASE: &str = "ventoy-1.1.18";
+const ZIP: &str = "ventoy-1.1.18-windows.zip";
+const ZIP_SHA256: &str = "082c478e8c432e1ac653899fcf50e3a4077a2851bc6112b5ddd30545962164a9";
+const ZIP_LIMIT: u64 = 64 * 1024 * 1024;
+
+pub fn import_ventoy(output: &Path, local_archive: Option<&Path>) -> io::Result<PathBuf> {
+    if output.symlink_metadata().is_ok() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "Import destination already exists",
+        ));
+    }
+    let mut bytes = Vec::new();
+    if let Some(path) = local_archive {
+        let image = open_image(path.as_os_str()).map_err(io::Error::other)?;
+        image.file.take(ZIP_LIMIT + 1).read_to_end(&mut bytes)?;
+    } else {
+        let config = ureq::Agent::config_builder()
+            .https_only(true)
+            .tls_config(
+                TlsConfig::builder()
+                    .provider(TlsProvider::NativeTls)
+                    .root_certs(RootCerts::PlatformVerifier)
+                    .build(),
+            )
+            .timeout_global(Some(Duration::from_secs(180)))
+            .build();
+        let agent = ureq::Agent::new_with_config(config);
+        agent
+            .get(format!(
+                "https://github.com/ventoy/Ventoy/releases/download/v1.1.18/{ZIP}"
+            ))
+            .call()
+            .map_err(io::Error::other)?
+            .body_mut()
+            .as_reader()
+            .take(ZIP_LIMIT + 1)
+            .read_to_end(&mut bytes)?;
+    }
+    if bytes.len() as u64 > ZIP_LIMIT || format!("{:x}", Sha256::digest(&bytes)) != ZIP_SHA256 {
+        return Err(io::Error::other("Ventoy archive SHA-256 mismatch"));
+    }
+    let mut zip = zip::ZipArchive::new(Cursor::new(&bytes))?;
+    if let Some(parent) = output.parent().filter(|path| !path.as_os_str().is_empty()) {
+        fs::create_dir_all(parent)?;
+    }
+    fs::create_dir(output)?;
+    zip.extract(output)?;
+    fs::write(output.join(ZIP), &bytes)?;
+    Ok(output.join(RELEASE))
+}
 
 fn verified(path: &Path, size: usize, expected: &str) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();

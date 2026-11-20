@@ -1,0 +1,33 @@
+name: Rustoy CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libssl-dev libwayland-dev libxkbcommon-dev libx11-dev pkg-config
+      - name: Install Rust and the x86-64 UEFI target
+        run: rustup toolchain install stable --profile minimal --component rustfmt --target x86_64-unknown-uefi
+      - name: Check formatting
+        run: cargo +stable fmt --all --check
+      - name: Test workspace
+        run: cargo +stable test --locked --workspace
+      - name: Build native EFI application
+        run: cargo +stable build --locked --release -p rustoy-uefi --target x86_64-unknown-uefi

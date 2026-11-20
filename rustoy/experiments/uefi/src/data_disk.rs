@@ -8,8 +8,8 @@ use uefi::proto::device_path::{DevicePath, media};
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::block::BlockIO;
 
-#[repr(align(4096))]
-struct Bounce([u8; 4096]);
+const TRANSFER: usize = 32 * 1024;
+const ALIGNMENT: usize = 4096;
 
 fn borrow_protocol<P: ProtocolPointer + ?Sized>(handle: Handle) -> uefi::Result<ScopedProtocol<P>> {
     // SAFETY: The synchronous read path never connects or disconnects controllers,
@@ -31,6 +31,7 @@ pub struct Disk {
     media_id: u32,
     length: u64,
     sector: u64,
+    buffer: Vec<u8>,
 }
 
 impl ReadAt for Disk {
@@ -46,20 +47,19 @@ impl ReadAt for Disk {
         {
             return Err(Error::Bounds);
         }
-        let mut bounce = Bounce([0; 4096]);
+        let alignment = self.buffer.as_ptr().align_offset(ALIGNMENT);
+        let bounce = &mut self.buffer[alignment..alignment + TRANSFER];
+        let sector = self.sector as usize;
         let mut offset = offset;
         let mut rest = buffer;
         while !rest.is_empty() {
             let start = (offset % self.sector) as usize;
-            let count = rest.len().min(self.sector as usize - start);
+            let count = rest.len().min(TRANSFER - start);
+            let transfer = (start + count).next_multiple_of(sector);
             self.protocol
-                .read_blocks(
-                    self.media_id,
-                    offset / self.sector,
-                    &mut bounce.0[..self.sector as usize],
-                )
+                .read_blocks(self.media_id, offset / self.sector, &mut bounce[..transfer])
                 .map_err(|_| Error::Io)?;
-            rest[..count].copy_from_slice(&bounce.0[start..start + count]);
+            rest[..count].copy_from_slice(&bounce[start..start + count]);
             rest = &mut rest[count..];
             offset += count as u64;
         }
@@ -98,7 +98,7 @@ pub fn open() -> Result<Option<exfat::Volume<Disk>>, Error> {
             continue;
         }
         let sector = u64::from(media.block_size());
-        if !matches!(sector, 512 | 4096) || media.io_align() > 4096 {
+        if !matches!(sector, 512 | 4096) || u64::from(media.io_align()) > ALIGNMENT as u64 {
             return Err(Error::Unsupported);
         }
         let length = media
@@ -112,6 +112,7 @@ pub fn open() -> Result<Option<exfat::Volume<Disk>>, Error> {
             media_id,
             length,
             sector,
+            buffer: vec![0; TRANSFER + ALIGNMENT - 1],
         };
         let mut table = vec![0; gpt::MAX_TABLE_BYTES];
         let mut slots = vec![

@@ -1,12 +1,67 @@
-//! Assemble an image from two already formatted partition images.
+//! Assemble and verify GPT disk images.
 use rustoy_fs::{exfat, gpt};
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 
 const SECTOR: u64 = 512;
 const TABLE_SECTORS: u64 = 32;
+const ALIGNMENT: u64 = 2048;
+const NATIVE_ESP_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) type ImagePartition<'a> = ([u8; 16], u64, u64, &'a mut dyn Read);
+
+pub fn assemble_native(output: &OsStr, loader: &OsStr, data: &OsStr, id: &OsStr) -> io::Result<()> {
+    let id = parse_id(id)?;
+    let mut data = super::open_image(data).map_err(io::Error::other)?;
+    validate_data(&mut data)?;
+    let loader = super::open_image(loader).map_err(io::Error::other)?;
+    if !(512..=16 * 1024 * 1024).contains(&loader.length) {
+        return Err(io::Error::other("Unexpected EFI application size"));
+    }
+    let mut application = Vec::with_capacity(loader.length as usize);
+    loader
+        .file
+        .take(loader.length + 1)
+        .read_to_end(&mut application)?;
+    if application.len() as u64 != loader.length || !is_x64_efi(&application) {
+        return Err(io::Error::other(
+            "Expected an x86-64 PE/COFF EFI application",
+        ));
+    }
+
+    let mut esp = vec![0; NATIVE_ESP_BYTES];
+    let mut disk = Cursor::new(esp.as_mut_slice());
+    fatfs::format_volume(
+        &mut disk,
+        fatfs::FormatVolumeOptions::new()
+            .fat_type(fatfs::FatType::Fat32)
+            .bytes_per_sector(SECTOR as u16)
+            .volume_label(*b"RUSTOYEFI  "),
+    )?;
+    disk.rewind()?;
+    let fs = fatfs::FileSystem::new(disk, fatfs::FsOptions::new())?;
+    {
+        let root = fs.root_dir();
+        let boot = root.create_dir("EFI")?.create_dir("BOOT")?;
+        let mut entry = boot.create_file("BOOTX64.EFI")?;
+        entry.write_all(&application)?;
+        entry.flush()?;
+    }
+    fs.unmount()?;
+    write_native(output, id, esp.len() as u64, &mut esp.as_slice(), &mut data)
+}
+
+fn is_x64_efi(bytes: &[u8]) -> bool {
+    let pe_offset = u32::from_le_bytes(bytes[60..64].try_into().unwrap()) as usize;
+    let Some(header) = bytes.get(pe_offset..).and_then(|data| data.get(..94)) else {
+        return false;
+    };
+    bytes.starts_with(b"MZ")
+        && header[..6] == *b"PE\0\0\x64\x86"
+        && u16::from_le_bytes(header[20..22].try_into().unwrap()) >= 70
+        && header[24..26] == [0x0b, 0x02]
+        && header[92..94] == [10, 0]
+}
 
 pub fn assemble(output: &OsStr, esp: &OsStr, data: &OsStr, id: &OsStr) -> io::Result<()> {
     let mut esp = super::open_image(esp).map_err(io::Error::other)?;
@@ -19,29 +74,42 @@ pub fn assemble(output: &OsStr, esp: &OsStr, data: &OsStr, id: &OsStr) -> io::Re
         || boot[510..] != [0x55, 0xaa]
         || boot[11..13] != 512u16.to_le_bytes()
         || u64::from(u32::from_le_bytes(boot[32..36].try_into().unwrap())) * SECTOR != esp.length
-        || data.length % SECTOR != 0
     {
         return Err(io::Error::other(
             "expected 512-byte-sector FAT32 and exFAT partition images",
         ));
     }
+    validate_data(&mut data)?;
+    write_native(output, id, esp.length, &mut esp.file, &mut data)
+}
+
+fn validate_data(data: &mut super::Image) -> io::Result<()> {
     let length = data.length;
-    exfat::read_geometry(&mut data, 0, length)
+    exfat::read_geometry(data, 0, length)
         .map_err(|err| io::Error::other(format!("exFAT partition validation failed: {err:?}")))?;
-    data.file.rewind()?;
-    let esp_end = 2048 + esp.length / SECTOR;
-    let data_start = esp_end.div_ceil(2048) * 2048;
+    if !length.is_multiple_of(SECTOR) {
+        return Err(io::Error::other(
+            "Expected an exFAT partition image aligned to 512 bytes",
+        ));
+    }
+    data.file.rewind()
+}
+
+fn write_native(
+    output: &OsStr,
+    id: [u8; 16],
+    esp_length: u64,
+    esp: &mut dyn Read,
+    data: &mut super::Image,
+) -> io::Result<()> {
+    let esp_end = ALIGNMENT + esp_length / SECTOR;
+    let data_start = esp_end.div_ceil(ALIGNMENT) * ALIGNMENT;
     write_image(
         output,
         id,
         [0; 512],
         [
-            (
-                gpt::EFI_SYSTEM,
-                2048,
-                esp.length,
-                &mut esp.file as &mut dyn Read,
-            ),
+            (gpt::EFI_SYSTEM, ALIGNMENT, esp_length, esp),
             (gpt::BASIC_DATA, data_start, data.length, &mut data.file),
         ],
     )

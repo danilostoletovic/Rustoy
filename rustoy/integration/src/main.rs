@@ -1,10 +1,10 @@
-//! Disposable OVMF smoke test. The exported FAT directory is read-only.
+//! Disposable OVMF smoke tests with read-only USB media.
 #![forbid(unsafe_code)]
 
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -18,13 +18,22 @@ fn smoke(
 ) -> io::Result<()> {
     fs::create_dir(output)?;
     let output = output.canonicalize()?;
-    let (media, expected) = if let [flag, count] = isos
+    let boot_debian = matches!(isos, [flag] if flag == Path::new("--boot-debian"));
+    let expected = if boot_debian {
+        Some(1)
+    } else if let [flag, count] = isos
         && flag.as_os_str() == "--count"
     {
-        let count = count
-            .to_str()
-            .and_then(|text| text.parse::<usize>().ok())
-            .ok_or_else(|| io::Error::other("invalid discovery count"))?;
+        Some(
+            count
+                .to_str()
+                .and_then(|text| text.parse::<usize>().ok())
+                .ok_or_else(|| io::Error::other("invalid discovery count"))?,
+        )
+    } else {
+        None
+    };
+    let (media, expected) = if let Some(count) = expected {
         if !fs::metadata(app)?.is_file() {
             return Err(io::Error::other("expected a regular GPT image"));
         }
@@ -42,9 +51,26 @@ fn smoke(
     let vars_copy = output.join("vars.fd");
     fs::copy(vars, &vars_copy)?;
     let serial = output.join("serial.log");
-    let mut child = Command::new(qemu)
-        .args(["-machine", "q35,accel=tcg", "-m", "256", "-display", "none"])
-        .args(["-monitor", "none", "-no-reboot", "-nic", "none"])
+    let mut command = Command::new(qemu);
+    if boot_debian {
+        command
+            .args([
+                "-machine",
+                "q35,accel=tcg,smm=on",
+                "-smp",
+                "2",
+                "-m",
+                "2048",
+            ])
+            .args(["-global", "driver=cfi.pflash01,property=secure,value=on"])
+            .args(["-monitor", "stdio"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null());
+    } else {
+        command.args(["-machine", "q35,accel=tcg", "-m", "256", "-monitor", "none"]);
+    }
+    let mut child = command
+        .args(["-display", "none", "-no-reboot", "-nic", "none"])
         .args([
             "-drive",
             &format!("if=pflash,format=raw,readonly=on,file={}", qemu_path(code)),
@@ -62,15 +88,45 @@ fn smoke(
         .args(["-serial", &format!("file:{}", serial.display())])
         .stderr(fs::File::create(output.join("qemu.log"))?)
         .spawn()?;
-    let deadline = Instant::now() + Duration::from_secs(45);
+    let deadline = Instant::now() + Duration::from_secs(if boot_debian { 240 } else { 45 });
     let discovery_marker = format!("RUSTOY_ISO_COUNT={expected}");
+    let mut monitor = child.stdin.take();
+    let mut sent = false;
     let result = loop {
-        if fs::read_to_string(&serial).is_ok_and(|log| {
+        if let Ok(log) = fs::read_to_string(&serial) {
             let log = strip_terminal_sequences(&log);
-            log.contains("RUSTOY_EFI_STARTED")
-                && log.lines().any(|line| line.trim() == discovery_marker)
-        }) {
-            break Ok(());
+            let discovered = log.contains("RUSTOY_EFI_STARTED")
+                && log.lines().any(|line| line.trim() == discovery_marker);
+            if discovered {
+                if !boot_debian {
+                    break Ok(());
+                }
+                if !sent {
+                    let Some(stdin) = &mut monitor else {
+                        break Err(io::Error::other("QEMU monitor input is unavailable"));
+                    };
+                    if let Err(err) = stdin
+                        .write_all(b"sendkey ret\n")
+                        .and_then(|()| stdin.flush())
+                    {
+                        break Err(err);
+                    }
+                    sent = true;
+                }
+                if log.contains("Starting Debian Live EFI kernel.")
+                    && log.contains("/run/live/rootfs/")
+                    && (log.contains("Reached target multi-user.target")
+                        || log.contains("debian login:"))
+                {
+                    break Ok(());
+                }
+                if let Some(failure) = log
+                    .lines()
+                    .find(|line| line.contains("Debian Live boot failed:"))
+                {
+                    break Err(io::Error::other(failure));
+                }
+            }
         }
         match child.try_wait() {
             Ok(Some(status)) => break Err(io::Error::other(format!("QEMU exited with {status}"))),
@@ -78,9 +134,11 @@ fn smoke(
             Ok(None) => {}
         }
         if Instant::now() >= deadline {
-            break Err(io::Error::other(
-                "timed out waiting for the Rustoy startup and discovery markers",
-            ));
+            break Err(io::Error::other(if boot_debian {
+                "timed out waiting for Debian Live to reach userspace"
+            } else {
+                "timed out waiting for the Rustoy startup and discovery markers"
+            }));
         }
         thread::sleep(Duration::from_millis(100));
     };
@@ -119,12 +177,15 @@ fn main() -> ExitCode {
         eprintln!(
             "       rustoy-integration <qemu> <ovmf-code> <ovmf-vars> <gpt.img> <new-output-dir> --count <n>"
         );
+        eprintln!(
+            "       rustoy-integration <qemu> <ovmf-secure-code> <ovmf-vars> <gpt.img> <new-output-dir> --boot-debian"
+        );
         return ExitCode::from(2);
     };
     match smoke(qemu, code, vars, app, output, isos) {
         Ok(()) => {
             println!(
-                "Observed RUSTOY_EFI_STARTED in {}",
+                "OVMF smoke test passed. Transcript at {}",
                 output.join("serial.log").display()
             );
             ExitCode::SUCCESS

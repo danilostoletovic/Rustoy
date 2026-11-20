@@ -94,6 +94,7 @@ pub fn start(source: impl ReadAt, name: &str) -> Result<(), Status> {
         .map_err(|_| Status::DEVICE_ERROR)?;
     iso.read(assets.initrd, 0, &mut initrd.bytes)
         .map_err(|_| Status::DEVICE_ERROR)?;
+    drop(iso);
     let options: Vec<u16> = alloc::format!(
         "boot=live components findiso=/{name} noeject console=tty0 console=ttyS0,115200n8"
     )

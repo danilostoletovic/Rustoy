@@ -2,11 +2,11 @@
 
 ## Windows desktop app
 
-Run `target/release/rustoy-desktop.exe` as administrator on Windows x64. Choose a USB drive and confirm erasure. After setup, copy ISOs to the root of the RUSTOY volume. The fixed GPT layout has a 256 MiB FAT32 EFI System Partition and one exFAT partition for ISO storage. The installer uses Windows Storage cmdlets to partition and format the selected USB and verifies the hash of the installed EFI loader. The CLI retains its disposable image operations.
+Run `target/release/rustoy-desktop.exe` as administrator on Windows x64. Choose a USB drive and confirm erasure. After setup, copy ISOs to the root of the RUSTOY volume. The fixed GPT layout has a 256 MiB FAT32 EFI System Partition and one exFAT partition for ISO storage. The installer calls Windows Storage through WMI and compares the installed EFI loader byte for byte against its embedded payload. The CLI can also create and inspect disposable disk images.
 
-To rebuild the USB installer, first build `rustoy-uefi` for `x86_64-unknown-uefi`, set `RUSTOY_EFI_IMAGE` to the resulting EFI file's absolute path, then run `cargo build --locked --release -p rustoy-host --bin rustoy-desktop`. The current payload is unsigned. Booting an ISO from the menu remains under development.
+To rebuild the USB installer, first build `rustoy-uefi` for `x86_64-unknown-uefi`, set `RUSTOY_EFI_IMAGE` to the resulting EFI file's absolute path, then run `cargo build --locked --release -p rustoy-host --bin rustoy-desktop`. The current payload is unsigned. The native Linux boot profile targets x86-64 Debian Live.
 
-The Windows x64 GNU release build and launch smoke test passed. Windows Storage command signatures and PowerShell syntax were checked. Storage enumeration returned a CIM access error in the test environment, so physical installation remains unverified. No physical disk was formatted.
+Physical USB installation remains unverified.
 
 The [technical design](DESIGN.md) defines the target architecture. This file records implementation and test evidence.
 
@@ -15,8 +15,8 @@ The [technical design](DESIGN.md) defines the target architecture. This file rec
 | Native x86_64 EFI application | Release build passed. OVMF ran the application from an emulated USB device and logged `RUSTOY_EFI_STARTED`. |
 | FAT discovery and menu | OVMF listed `fixture-0.iso` and `fixture-1.iso` and logged `RUSTOY_ISO_COUNT=2`. These small filename fixtures exercise discovery. Keyboard events and the ISO probe action require separate VM tests. |
 | ISO9660 and El Torito | Three host regression tests passed using synthetic volume fixtures. The reader supports single-extent primary-volume files and initial EFI boot entries in a single catalog sector. Rock Ridge, Joliet, multi-extent files and UDF are pending. |
-| Disk layout | `rustoy-host inspect-disk <file.img> [4096]` opens a regular image read-only, validates both GPT copies, and lists root-level ISO filenames from single-FAT exFAT Basic Data partitions. The shared exFAT reader supports contiguous and FAT-chained file reads. Filesystem formatting, the disposable installer, and UEFI discovery on exFAT remain pending. |
-| Debian Live | The EFI inspector can look up the kernel and initramfs and check the Linux boot signature. No ISO has booted. |
+| Disk layout | `format-exfat` prepares a single-FAT exFAT volume with contiguous ISO files. `assemble-native-image` builds a GPT image with a FAT32 EFI System Partition and the exFAT data volume. `inspect-disk` validates both GPT copies and lists the ISO filenames. |
+| Debian Live | The native loader checks the Linux boot header and hands off the kernel and initramfs through UEFI. Debian Live 13.7.0 x86-64 reached multi-user mode in QEMU/OVMF from a GPT image formatted and assembled by Rustoy. |
 | Windows optical media | The experimental F6 action publishes read-only UEFI Block I/O views of the ISO and its embedded FAT boot filesystem. It uses firmware LoadImage and StartImage and requires an explicit firmware SecureBoot value of zero while the authenticated data path is pending. The current OVMF tests have not confirmed a child EFI start. Full UDF access, WinPE media reattachment and Setup remain pending. |
 | Secure Boot and factory keys | Pending. |
 
@@ -56,4 +56,4 @@ rustoy-host inspect-disk <disk.img>
 rustoy-integration <qemu> <ovmf-code> <ovmf-vars> <disk.img> <new-output-dir> --count 2
 ```
 
-Native volume formatting, menu key automation and real guest boot remain pending. The only first-party unsafe block borrows firmware device path and Block I/O interfaces for the synchronous disk access path. It does not hold those interfaces across input or child image execution.
+The current Rust integration runner can also select Debian Live and observe boot progress from the guest serial log. The firmware disk reader batches aligned reads for the Linux kernel and initramfs.
